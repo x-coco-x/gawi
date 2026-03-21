@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>가위(GAWI) : 원고 슬라이서</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<style>
+  @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css');
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Gaegu:wght@400;700&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box}
+
+  :root{
+    --bg:#f6f5f1;
+    --surface:#fff;
+    --surface-alt:#f0efeb;
+    --border:#ddd9d2;
+    --border-h:#c5c0b8;
+    --text:#1d1c19;
+    --text-2:#6e6b63;
+    --text-3:#a5a29a;
+    --green:#1a7f5a;
+    --green-bg:#e6f5ee;
+    --red:#c03030;
+    --red-bg:#fce8e8;
+    --blue:#2060c0;
+    --r:12px;
+  }
+
+  html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+
+  body{
+    font-family:Pretendard,-apple-system,BlinkMacSystemFont,sans-serif;
+    background:var(--bg);color:var(--text);min-height:100vh;position:relative;
+  }
+
+  body::after{
+    content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.028;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+
+  .app{max-width:640px;margin:0 auto;padding:52px 20px 20px}
+
+  /* ── Header ── */
+  header{margin-bottom:36px}
+  .brand{display:inline-flex;align-items:center;gap:10px;margin-bottom:10px}
+  .brand-mark{
+    width:34px;height:34px;border-radius:9px;background:var(--text);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .brand-mark svg{width:18px;height:18px}
+  header h1{font-size:20px;font-weight:780;letter-spacing:-.3px;color:var(--text)}
+  header p{font-size:13.5px;color:var(--text-2);line-height:1.7}
+
+  /* ── Upload ── */
+  .upload-zone{
+    border:1.5px dashed var(--border);border-radius:var(--r);
+    padding:40px 24px;text-align:center;cursor:pointer;
+    transition:all .2s ease;background:var(--surface);margin-bottom:28px;
+  }
+  .upload-zone:hover,.upload-zone.dragover{border-color:var(--green);background:var(--green-bg)}
+  .upload-zone.has-file{
+    border-style:solid;border-color:var(--border);
+    padding:16px 20px;background:var(--surface);cursor:default;
+  }
+  .upload-zone input{display:none}
+
+  .upload-illust{
+    width:48px;height:48px;background:var(--surface-alt);border-radius:14px;
+    margin:0 auto 12px;display:flex;align-items:center;justify-content:center;
+  }
+  .upload-illust svg{width:22px;height:22px;color:var(--text-3)}
+  .upload-zone h3{font-size:14px;font-weight:700;margin-bottom:3px}
+  .upload-zone .hint{font-size:12.5px;color:var(--text-3)}
+
+  /* File list (multi) */
+  .file-list-header{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .file-list-title{
+    font-size:13px;font-weight:700;color:var(--text);
+    display:flex;align-items:center;gap:8px;
+  }
+  .file-count{
+    font-size:11px;font-weight:600;
+    background:var(--green-bg);color:var(--green);
+    padding:2px 8px;border-radius:20px;
+  }
+  .file-list-actions{display:flex;gap:6px}
+
+  .fl-btn{
+    background:none;border:none;cursor:pointer;
+    font-family:Pretendard,sans-serif;font-size:11.5px;font-weight:600;
+    padding:4px 10px;border-radius:6px;transition:background .15s;
+  }
+  .fl-btn-add{color:var(--blue)}
+  .fl-btn-add:hover{background:rgba(32,96,192,.06)}
+  .fl-btn-clear{color:var(--red)}
+  .fl-btn-clear:hover{background:var(--red-bg)}
+
+  .file-list{
+    max-height:180px;overflow-y:auto;
+    display:flex;flex-direction:column;gap:4px;
+  }
+  .file-list::-webkit-scrollbar{width:3px}
+  .file-list::-webkit-scrollbar-track{background:transparent}
+  .file-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+  .file-row{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 10px;border-radius:8px;
+    background:var(--surface-alt);
+    transition:background .12s;
+  }
+  .file-row:hover{background:#eae9e4}
+
+  .file-row-icon{font-size:14px;flex-shrink:0;width:20px;text-align:center}
+  .file-row-name{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;font-weight:500;flex:1;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .file-row-size{font-size:11px;color:var(--text-3);flex-shrink:0}
+  .file-row-rm{
+    background:none;border:none;cursor:pointer;
+    color:var(--text-3);font-size:14px;line-height:1;
+    padding:2px 4px;border-radius:4px;transition:all .12s;flex-shrink:0;
+  }
+  .file-row-rm:hover{color:var(--red);background:var(--red-bg)}
+
+  /* Legacy single file info */
+  .file-info{display:flex;align-items:center;gap:14px;text-align:left}
+  .file-badge{
+    width:40px;height:40px;background:var(--green-bg);border-radius:10px;
+    display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;
+  }
+  .file-name{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;word-break:break-all}
+  .file-meta{font-size:11.5px;color:var(--text-3);margin-top:1px}
+  .remove-btn{
+    margin-left:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;
+    font-family:Pretendard,sans-serif;font-weight:600;
+    padding:5px 12px;border-radius:6px;transition:background .15s;flex-shrink:0;
+  }
+  .remove-btn:hover{background:var(--red-bg)}
+
+  /* ── Section Divider ── */
+  .section-head{
+    font-size:11px;font-weight:700;color:var(--text-3);
+    text-transform:uppercase;letter-spacing:1.8px;margin-bottom:12px;
+  }
+
+  /* ── Platform Grid ── */
+  .platform-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:28px}
+
+  .p-card{
+    position:relative;padding:18px 16px 16px;
+    border:1.5px solid var(--border);border-radius:var(--r);
+    background:var(--surface);cursor:pointer;
+    font-family:Pretendard,sans-serif;text-align:left;
+    transition:all .18s ease;overflow:hidden;
+  }
+  .p-card:disabled{opacity:.28;cursor:not-allowed}
+  .p-card:not(:disabled):hover{
+    border-color:var(--border-h);transform:translateY(-2px);
+    box-shadow:0 6px 24px rgba(0,0,0,.06);
+  }
+  .p-card:not(:disabled):active{transform:translateY(0)}
+
+  .p-card::before{
+    content:'';position:absolute;left:0;top:8px;bottom:8px;
+    width:3px;border-radius:0 3px 3px 0;background:transparent;transition:background .18s;
+  }
+  .p-card.t-a:not(:disabled):hover::before{background:var(--green)}
+  .p-card.t-b:not(:disabled):hover::before{background:#03c75a}
+
+  .icon-row{display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap}
+  .ic{
+    width:26px;height:26px;border-radius:7px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:10.5px;font-weight:800;color:#fff;flex-shrink:0;letter-spacing:-.3px;
+  }
+  .ic.kakao{background:#fee500;color:#3c1e1e}
+  .ic.ridi{background:#1f8ce6}
+  .ic.mrblu{background:#2563eb}
+  .ic.mutoon{background:#f97316}
+  .ic.comico{background:#ef4444}
+  .ic.altoon{background:#22c55e}
+  .ic.naver{background:#03c75a}
+
+  .p-card .p-name{font-size:13px;font-weight:700;margin-bottom:2px;color:var(--text)}
+  .p-card .p-spec{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3);font-weight:500}
+
+  /* wip card */
+  .p-card-wip{
+    grid-column:1/-1;
+    border:1.5px dashed var(--border);
+    background:var(--surface-alt);
+    cursor:pointer;padding:16px 18px;
+  }
+  .p-card-wip:not(:disabled):hover{
+    border-color:var(--border-h);
+    transform:none;
+    box-shadow:none;
+    background:#eae9e4;
+  }
+  .p-card-wip::before{display:none}
+  .wip-content{display:flex;align-items:center;gap:12px}
+  .wip-icon{font-size:22px;flex-shrink:0}
+  .wip-title{font-size:13px;font-weight:700;color:var(--text-2)}
+  .wip-sub{font-size:11.5px;color:var(--text-3);margin-top:1px}
+
+  /* ── Progress ── */
+  .progress-area{display:none;margin-bottom:24px}
+  .progress-area.active{display:block}
+  .bar-track{height:4px;background:var(--surface-alt);border-radius:2px;overflow:hidden;margin-bottom:8px}
+  .bar-fill{height:100%;border-radius:2px;background:var(--green);transition:width .3s;width:0%}
+  .bar-fill.t-b{background:#03c75a}
+  .progress-text{font-size:11.5px;color:var(--text-3);font-family:'IBM Plex Mono',monospace}
+
+  /* ── Log ── */
+  .log-area{
+    display:none;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;
+  }
+  .log-area.active{display:block}
+  .log-area h4{font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1.6px;margin-bottom:12px}
+  .log-entries{
+    max-height:240px;overflow-y:auto;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.9;color:var(--text-3);white-space:pre-wrap;
+  }
+  .log-entries::-webkit-scrollbar{width:3px}
+  .log-entries::-webkit-scrollbar-track{background:transparent}
+  .log-entries::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .log-entry.success{color:var(--green)}
+  .log-entry.error{color:var(--red)}
+  .log-entry.info{color:var(--blue)}
+
+  /* ── Download ── */
+  .dl-area{display:none;margin-top:18px}
+  .dl-area.active{display:block}
+  .dl-row{display:flex;gap:10px}
+  .dl-btn{
+    flex:1;padding:12px 16px;border-radius:10px;border:none;
+    font-family:Pretendard,sans-serif;font-size:13px;font-weight:700;
+    cursor:pointer;transition:all .15s ease;
+    display:flex;align-items:center;justify-content:center;gap:7px;
+  }
+  .dl-btn:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.07)}
+  .dl-btn svg{width:15px;height:15px}
+  .dl-zip{background:var(--surface-alt);color:var(--text);border:1px solid var(--border)}
+  .dl-files{background:var(--text);color:#fff}
+
+  /* ── Filename Input ── */
+  .dl-filename{
+    display:flex;align-items:center;gap:8px;
+    margin-bottom:12px;
+  }
+  .dl-filename label{
+    font-size:11.5px;font-weight:700;color:var(--text-3);
+    flex-shrink:0;white-space:nowrap;
+  }
+  .dl-filename input{
+    flex:1;padding:8px 12px;
+    border:1.5px solid var(--border);border-radius:8px;
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;
+    color:var(--text);background:var(--surface);
+    outline:none;transition:border-color .15s;
+  }
+  .dl-filename input:focus{border-color:var(--green)}
+  .dl-filename input::placeholder{color:var(--text-3)}
+
+  /* ── Footer ── */
+  .site-footer{
+    text-align:center;padding:12px 20px 32px;
+    font-size:12px;color:var(--text-3);
+    letter-spacing:.2px;
+  }
+
+  /* ── 가위질 한마디 (Speech Bubble Chat) ── */
+  .chat{margin-top:48px;margin-bottom:12px}
+  .chat-head{margin-bottom:14px}
+  .chat-title{
+    font-family:'Gaegu',cursive;
+    font-size:20px;font-weight:700;color:var(--text);
+  }
+  .chat-sub{font-size:11.5px;color:var(--text-3);margin-top:2px}
+
+  .chat-scroll{
+    max-height:360px;overflow-y:auto;
+    display:flex;flex-direction:column;gap:6px;
+    padding:4px 2px;
+  }
+  .chat-scroll::-webkit-scrollbar{width:3px}
+  .chat-scroll::-webkit-scrollbar-track{background:transparent}
+  .chat-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+  /* single message row */
+  .msg{display:flex;align-items:flex-start;gap:8px;padding-left:8px}
+
+  .msg-bubble{
+    position:relative;
+    background:var(--surface);
+    border:1.5px solid var(--border);
+    border-radius:14px 14px 14px 4px;
+    padding:10px 14px 8px;
+    max-width:420px;
+    transition:box-shadow .12s;
+    overflow:visible;
+  }
+  .msg-bubble:hover{box-shadow:0 2px 10px rgba(0,0,0,.05)}
+
+  /* tail left */
+  .msg-bubble::before{
+    content:'';position:absolute;
+    left:-7px;top:14px;
+    width:10px;height:10px;
+    background:var(--surface);
+    border-left:1.5px solid var(--border);
+    border-bottom:1.5px solid var(--border);
+    transform:rotate(45deg);
+  }
+
+  /* right-aligned message */
+  .msg.msg-right{flex-direction:row-reverse;padding-left:0;padding-right:8px}
+  .msg.msg-right .msg-bubble{
+    border-radius:14px 14px 4px 14px;
+  }
+  .msg.msg-right .msg-bubble::before{
+    left:auto;right:-7px;
+    border:none;
+    border-right:1.5px solid var(--border);
+    border-bottom:1.5px solid var(--border);
+    transform:rotate(-45deg);
+  }
+  .msg.msg-right .msg-nick{color:#7c3aed}
+  .msg.msg-right .msg-bottom{justify-content:flex-end}
+
+  .msg-nick{
+    font-size:12px;font-weight:700;color:var(--green);
+    margin-bottom:2px;
+  }
+  .msg-text{
+    font-family:'Gaegu',cursive;
+    font-size:15.5px;line-height:1.45;
+    color:var(--text);word-break:break-word;
+  }
+
+  .msg-bottom{
+    display:flex;align-items:center;gap:10px;
+    margin-top:5px;
+  }
+  .msg-time{
+    font-size:10px;color:var(--text-3);
+    font-family:'IBM Plex Mono',monospace;
+  }
+
+  .msg-react{
+    background:none;border:1px solid var(--border);
+    border-radius:20px;padding:2px 8px;
+    font-size:12px;cursor:pointer;
+    color:var(--text-3);
+    transition:all .15s;
+    display:flex;align-items:center;gap:3px;
+  }
+  .msg-react:hover{border-color:var(--border-h);color:var(--text-2)}
+  .msg-react.reacted{
+    border-color:var(--green);color:var(--green);
+    background:var(--green-bg);
+  }
+  .msg-react .r-count{font-family:'IBM Plex Mono',monospace;font-size:11px}
+
+  .chat-empty{
+    font-family:'Gaegu',cursive;font-size:15px;color:var(--text-3);
+    padding:32px;text-align:center;
+  }
+
+  /* input area */
+  .chat-write{
+    display:flex;gap:8px;margin-top:12px;
+    align-items:flex-end;
+  }
+  .chat-nick{
+    font-family:'Gaegu',cursive;font-size:14px;
+    padding:9px 12px;width:80px;
+    border:1.5px solid var(--border);border-radius:8px;
+    background:var(--surface);color:var(--text);
+    outline:none;transition:border-color .15s;
+    flex-shrink:0;
+  }
+  .chat-nick:focus{border-color:var(--green)}
+  .chat-nick::placeholder{color:var(--text-3)}
+
+  .chat-msg{
+    font-family:'Gaegu',cursive;font-size:15px;
+    padding:9px 14px;flex:1;
+    border:1.5px solid var(--border);border-radius:8px;
+    background:var(--surface);color:var(--text);
+    outline:none;transition:border-color .15s;
+  }
+  .chat-msg:focus{border-color:var(--green)}
+  .chat-msg::placeholder{color:var(--text-3)}
+
+  .chat-send{
+    font-family:'Gaegu',cursive;font-size:15px;font-weight:700;
+    padding:9px 16px;
+    background:var(--text);color:#fff;
+    border:none;border-radius:8px;cursor:pointer;
+    transition:all .15s;flex-shrink:0;
+  }
+  .chat-send:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.1)}
+
+  /* ── Anim ── */
+  @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  .anim{animation:rise .45s cubic-bezier(.22,.61,.36,1) forwards}
+  .d1{animation-delay:.04s;opacity:0}
+  .d2{animation-delay:.08s;opacity:0}
+
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .processing .p-name{animation:pulse 1.1s ease infinite}
+
+  @media(max-width:480px){
+    .platform-grid{grid-template-columns:1fr}
+    .app{padding:32px 16px 20px}
+    header h1{font-size:18px}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="anim">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+          <line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>
+        </svg>
+      </div>
+      <h1>가위(GAWI) : 원고 슬라이서</h1>
+    </div>
+    <p>ZIP 또는 이미지(JPG/PNG)를 업로드하면, 플랫폼 규격에 맞게 슬라이스합니다.</p>
+  </header>
+
+  <!-- Upload -->
+  <div class="upload-zone anim d1" id="uploadZone">
+    <input type="file" id="fileInput" accept=".zip,.jpg,.jpeg,.png" multiple>
+    <!-- Empty state -->
+    <div id="uploadPrompt">
+      <div class="upload-illust">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <h3>파일을 드래그하거나 클릭</h3>
+      <p class="hint">ZIP 여러 개 또는 이미지(JPG/PNG) 여러 장</p>
+    </div>
+    <!-- File list state -->
+    <div id="fileListWrap" style="display:none">
+      <div class="file-list-header">
+        <div class="file-list-title">
+          업로드 파일 <span class="file-count" id="fileCount">0</span>
+        </div>
+        <div class="file-list-actions">
+          <button class="fl-btn fl-btn-add" id="addMoreBtn">+ 추가</button>
+          <button class="fl-btn fl-btn-clear" id="clearAllBtn">전체 삭제</button>
+        </div>
+      </div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+  </div>
+
+  <!-- Platform Grid -->
+  <div class="section-head anim d2">플랫폼 선택</div>
+  <div class="platform-grid anim d2">
+    <button class="p-card t-a" id="btnA" disabled onclick="runSlice(760,990,'a')">
+      <div class="icon-row">
+        <div class="ic kakao" title="카카오페이지">K</div>
+        <div class="ic ridi" title="리디">R</div>
+        <div class="ic mrblu" title="미스터블루">미</div>
+        <div class="ic mutoon" title="무툰/큐툰">무</div>
+        <div class="ic comico" title="코미코">C</div>
+        <div class="ic altoon" title="올툰">올</div>
+      </div>
+      <div class="p-name">카카페 · 리디 · 미블 · 무큐 · 코미코 · 올툰</div>
+      <div class="p-spec">760 × 990</div>
+    </button>
+    <button class="p-card t-b" id="btnB" disabled onclick="runSlice(760,3000,'b')">
+      <div class="icon-row"><div class="ic naver" title="네이버웹툰">N</div></div>
+      <div class="p-name">네이버웹툰</div>
+      <div class="p-spec">760 × 3,000</div>
+    </button>
+    <button class="p-card p-card-wip" id="btnWip" onclick="nudgeReport()">
+      <div class="wip-content">
+        <div class="wip-icon">🚧</div>
+        <div>
+          <div class="wip-title">다른 플랫폼도 준비 중이에요</div>
+          <div class="wip-sub">필요한 규격이 있다면 아래에서 알려주세요 ↓</div>
+        </div>
+      </div>
+    </button>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-area" id="progressArea">
+    <div class="bar-track"><div class="bar-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText">준비 중...</div>
+  </div>
+
+  <!-- Log -->
+  <div class="log-area" id="logArea">
+    <h4>작업 로그</h4>
+    <div class="log-entries" id="logEntries"></div>
+  </div>
+
+  <!-- Download -->
+  <div class="dl-area" id="downloadArea">
+    <div class="dl-filename">
+      <label for="dlName">파일명</label>
+      <input type="text" id="dlName" placeholder="예: 1화, ep01 (미입력 시 원본 파일명)">
+    </div>
+    <div class="dl-row">
+      <button class="dl-btn dl-zip" onclick="downloadZip()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        <span id="dlZipLabel">ZIP 다운로드</span>
+      </button>
+      <button class="dl-btn dl-files" onclick="downloadFiles()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+        <span id="dlFilesLabel">개별 파일 다운로드</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ✂️ 가위질 한마디 -->
+  <div class="chat">
+    <div class="chat-head">
+      <div class="chat-title">✂️ 가위질 한마디</div>
+      <div class="chat-sub">프로 마감인들의 주절주절</div>
+    </div>
+    <div class="chat-scroll" id="chatScroll">
+      <div class="chat-empty">아직 아무도 안 적었어요. 첫 말풍선을 띄워보세요!</div>
+    </div>
+    <div class="chat-write">
+      <input class="chat-nick" id="chatNick" placeholder="닉네임" maxlength="7">
+      <input class="chat-msg" id="chatMsg" placeholder="한마디 남기기..." maxlength="70">
+      <button class="chat-send" id="chatSend">💬</button>
+    </div>
+  </div>
+
+</div>
+
+<footer class="site-footer">© 2026 GAWI. ✂️ Cut by Jihyang.</footer>
+
+<script>
+// ─── State ───
+// uploadedFiles: File[] — all uploaded files (ZIPs + images mixed)
+let uploadedFiles = [];
+// lastSliceResult: { groups: [{ name, blobs:[{name,data}] }], sliceW, sliceH }
+let lastSliceResult = null;
+
+// ─── DOM ───
+const $ = id => document.getElementById(id);
+const uploadZone = $('uploadZone'), fileInput = $('fileInput');
+const uploadPrompt = $('uploadPrompt');
+const fileListWrap = $('fileListWrap'), fileListEl = $('fileList'), fileCountEl = $('fileCount');
+const addMoreBtn = $('addMoreBtn'), clearAllBtn = $('clearAllBtn');
+const btnA=$('btnA'), btnB=$('btnB');
+const allBtns = [btnA, btnB];
+const progressArea=$('progressArea'), progressFill=$('progressFill'), progressText=$('progressText');
+const logArea=$('logArea'), logEntries=$('logEntries');
+const downloadArea=$('downloadArea');
+const dlZipLabel=$('dlZipLabel'), dlFilesLabel=$('dlFilesLabel');
+const dlName=$('dlName');
+
+// ─── Upload ───
+uploadZone.addEventListener('click', e => {
+  // Don't open file picker if clicking inside file list area
+  if (fileListWrap.style.display !== 'none' && fileListWrap.contains(e.target)) return;
+  if (uploadedFiles.length > 0) return; // use "+추가" button instead
+  fileInput.click();
+});
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+
+addMoreBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  fileInput.click();
+});
+
+clearAllBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  clearAll();
+});
+
+function addFiles(fileList) {
+  if (!fileList || !fileList.length) return;
+  const newFiles = Array.from(fileList).filter(f =>
+    /\.(zip|jpe?g|png)$/i.test(f.name)
+  );
+  if (!newFiles.length) { alert('지원 형식: ZIP, JPG, JPEG, PNG'); return; }
+
+  // Deduplicate by name+size
+  for (const f of newFiles) {
+    const dup = uploadedFiles.some(e => e.name === f.name && e.size === f.size);
+    if (!dup) uploadedFiles.push(f);
+  }
+
+  // Sort: ZIPs first (alpha), then images (alpha)
+  uploadedFiles.sort((a, b) => {
+    const aZip = a.name.toLowerCase().endsWith('.zip');
+    const bZip = b.name.toLowerCase().endsWith('.zip');
+    if (aZip !== bZip) return aZip ? -1 : 1;
+    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+  });
+
+  renderFileList();
+  lastSliceResult = null;
+  allBtns.forEach(b => b.disabled = false);
+  progressArea.classList.remove('active');
+  logArea.classList.remove('active');
+  downloadArea.classList.remove('active');
+  logEntries.innerHTML = '';
+}
+
+function removeFile(index) {
+  uploadedFiles.splice(index, 1);
+  if (uploadedFiles.length === 0) { clearAll(); return; }
+  renderFileList();
+  lastSliceResult = null;
+}
+
+function clearAll() {
+  uploadedFiles = []; lastSliceResult = null; fileInput.value = '';
+  uploadPrompt.style.display = '';
+  fileListWrap.style.display = 'none';
+  uploadZone.classList.remove('has-file');
+  allBtns.forEach(b => b.disabled = true);
+  progressArea.classList.remove('active');
+  logArea.classList.remove('active');
+  downloadArea.classList.remove('active');
+}
+
+function renderFileList() {
+  uploadPrompt.style.display = 'none';
+  fileListWrap.style.display = '';
+  uploadZone.classList.add('has-file');
+  fileCountEl.textContent = uploadedFiles.length;
+
+  fileListEl.innerHTML = '';
+  uploadedFiles.forEach((f, i) => {
+    const isZip = f.name.toLowerCase().endsWith('.zip');
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    const sizeTxt = f.size > 1024*1024
+      ? (f.size/1024/1024).toFixed(1) + ' MB'
+      : Math.round(f.size/1024) + ' KB';
+    row.innerHTML =
+      `<span class="file-row-icon">${isZip ? '📦' : '🖼️'}</span>` +
+      `<span class="file-row-name">${f.name}</span>` +
+      `<span class="file-row-size">${sizeTxt}</span>` +
+      `<button class="file-row-rm" title="삭제">×</button>`;
+    row.querySelector('.file-row-rm').addEventListener('click', e => {
+      e.stopPropagation(); removeFile(i);
+    });
+    fileListEl.appendChild(row);
+  });
+}
+
+// ─── Util ───
+function log(msg, type='') {
+  const d = document.createElement('div');
+  d.className = 'log-entry'+(type?' '+type:'');
+  d.textContent = msg; logEntries.appendChild(d);
+  logEntries.scrollTop = logEntries.scrollHeight;
+}
+function setProgress(p, t) { progressFill.style.width = p+'%'; progressText.textContent = t; }
+function canvasToBlob(c, t, q) { return new Promise(r => c.toBlob(r, t, q)); }
+
+// ─── Extract images from a single ZIP File ───
+async function extractZipImages(zipFile) {
+  const zip = await JSZip.loadAsync(zipFile);
+  const entries = [];
+  zip.forEach((path, entry) => {
+    if (entry.dir) return;
+    const name = path.split('/').pop();
+    if (path.includes('__MACOSX') || name.startsWith('.')) return;
+    if (/\.(jpe?g|png)$/i.test(name)) entries.push({ path, name, entry });
+  });
+  entries.sort((a,b) => a.name.localeCompare(b.name, undefined, { numeric:true, sensitivity:'base' }));
+  if (!entries.length) throw new Error(`"${zipFile.name}" ZIP 안에 이미지(JPG/PNG)가 없습니다.`);
+
+  const results = [];
+  for (const e of entries) {
+    let buf;
+    try { buf = await e.entry.async('arraybuffer'); }
+    catch { throw new Error(`"${e.name}" 읽기 실패 — ZIP 손상 가능성`); }
+    if (!buf.byteLength) throw new Error(`"${e.name}" 파일이 비어 있습니다.`);
+    const ext = e.name.toLowerCase().split('.').pop();
+    const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+    results.push({ name: e.name, blob: new Blob([buf], { type: mime }) });
+  }
+  return results;
+}
+
+// ─── Slice a list of images → blobs ───
+async function sliceImages(images, sliceW, sliceH, onProgress) {
+  const sliceBlobs = [];
+  let idx = 0;
+  for (let i = 0; i < images.length; i++) {
+    const { name, blob } = images[i];
+    let img;
+    try { img = await createImageBitmap(blob); }
+    catch {
+      const mb = (blob.size/1024/1024).toFixed(1);
+      const ext = name.split('.').pop();
+      throw new Error(
+        `"${name}" 이미지를 열 수 없습니다.\n`+
+        `• 크기: ${mb}MB / 확장자: .${ext}\n`+
+        `• 파일이 손상되었거나 실제 형식이 다를 수 있습니다.\n`+
+        `• 이미지 편집기에서 JPG로 다시 저장해 보세요.`
+      );
+    }
+    if (!img.width || !img.height)
+      throw new Error(`"${name}" 크기가 0 (${img.width}×${img.height})`);
+
+    log(`  [${i+1}/${images.length}] ${name} — ${img.width}×${img.height}`);
+
+    const scale = sliceW / img.width;
+    const scaledH = Math.round(img.height * scale);
+    const numSlices = Math.ceil(scaledH / sliceH);
+
+    for (let s = 0; s < numSlices; s++) {
+      const srcY = Math.round((s * sliceH) / scale);
+      const srcH = Math.min(Math.round(sliceH / scale), img.height - srcY);
+      const dstH = Math.min(sliceH, scaledH - s * sliceH);
+      const c = document.createElement('canvas');
+      c.width = sliceW; c.height = dstH;
+      c.getContext('2d').drawImage(img, 0, srcY, img.width, srcH, 0, 0, sliceW, dstH);
+      const tmpBlob = await canvasToBlob(c, 'image/jpeg', 0.92);
+      const arrBuf = await tmpBlob.arrayBuffer();
+      sliceBlobs.push({ name: String(idx+1).padStart(3,'0')+'.jpg', data: arrBuf });
+      idx++;
+    }
+    img.close();
+    if (onProgress) onProgress(i+1, images.length, idx);
+  }
+  return sliceBlobs;
+}
+
+// ─── Build groups from uploaded files ───
+function buildSourceGroups() {
+  // Separate ZIPs and images
+  const zips = uploadedFiles.filter(f => f.name.toLowerCase().endsWith('.zip'));
+  const imgs = uploadedFiles.filter(f => /\.(jpe?g|png)$/i.test(f.name));
+
+  const groups = [];
+
+  // Each ZIP = one group
+  for (const z of zips) {
+    groups.push({ name: z.name.replace(/\.zip$/i, ''), type: 'zip', file: z });
+  }
+
+  // All loose images = one group (if any)
+  if (imgs.length) {
+    imgs.sort((a,b) => a.name.localeCompare(b.name, undefined, { numeric:true, sensitivity:'base' }));
+    groups.push({ name: 'images', type: 'images', files: imgs });
+  }
+
+  return groups;
+}
+
+// ─── Main Slice ───
+async function runSlice(sliceW, sliceH, type) {
+  if (!uploadedFiles.length) return;
+
+  allBtns.forEach(b => b.disabled = true);
+  const activeBtn = type === 'a' ? btnA : btnB;
+  activeBtn.classList.add('processing');
+
+  progressFill.className = 'bar-fill' + (type !== 'a' ? ` t-${type}` : '');
+  progressFill.style.background = '';
+  progressArea.classList.add('active');
+  logArea.classList.add('active');
+  downloadArea.classList.remove('active');
+  logEntries.innerHTML = '';
+  setProgress(0, '준비 중...');
+
+  try {
+    log(`슬라이스 규격: ${sliceW} × ${sliceH} px`, 'info');
+
+    const sourceGroups = buildSourceGroups();
+    const totalGroups = sourceGroups.length;
+    log(`소스 ${totalGroups}개 처리 시작`, 'info');
+
+    const resultGroups = [];
+
+    for (let g = 0; g < totalGroups; g++) {
+      const group = sourceGroups[g];
+      log('');
+      log(`━━ [${g+1}/${totalGroups}] ${group.name} ━━`, 'info');
+
+      let images;
+      if (group.type === 'zip') {
+        log(`ZIP 읽는 중...`);
+        images = await extractZipImages(group.file);
+        log(`이미지 ${images.length}개 발견`);
+      } else {
+        images = group.files.map(f => ({ name: f.name, blob: f }));
+        log(`이미지 ${images.length}개`);
+      }
+
+      const groupBaseProgress = (g / totalGroups) * 95;
+      const groupWeight = (1 / totalGroups) * 95;
+
+      const blobs = await sliceImages(images, sliceW, sliceH, (done, total, sliceCount) => {
+        const pct = Math.round(groupBaseProgress + (done / total) * groupWeight);
+        setProgress(pct, `[${g+1}/${totalGroups}] ${group.name} — ${done}/${total} 처리, 슬라이스 ${sliceCount}개`);
+      });
+
+      log(`✓ ${group.name}: 슬라이스 ${blobs.length}개`, 'success');
+      resultGroups.push({ name: group.name, blobs });
+    }
+
+    setProgress(100, '완료!');
+    const totalSlices = resultGroups.reduce((s, g) => s + g.blobs.length, 0);
+    log('');
+    log(`✓ 전체 완료: ${resultGroups.length}개 소스, 총 슬라이스 ${totalSlices}개`, 'success');
+
+    lastSliceResult = { groups: resultGroups, sliceW, sliceH };
+
+    // Update download button labels
+    if (resultGroups.length > 1) {
+      dlZipLabel.textContent = `폴더별 통합 ZIP 다운로드`;
+      dlFilesLabel.textContent = `개별 ZIP ${resultGroups.length}개 묶음 다운로드`;
+    } else {
+      dlZipLabel.textContent = 'ZIP 다운로드';
+      dlFilesLabel.textContent = '개별 파일 다운로드';
+    }
+
+    downloadArea.classList.add('active');
+
+  } catch (err) {
+    log(''); log(`⛔ ${err.message}`, 'error');
+    log('파일 수정 후 다시 시도해 주세요.', 'error');
+    setProgress(0, '오류');
+    progressFill.style.background = 'var(--red)';
+    progressFill.style.width = '100%';
+    console.error(err);
+  }
+
+  activeBtn.classList.remove('processing');
+  if (uploadedFiles.length) allBtns.forEach(b => b.disabled = false);
+}
+
+// ─── Get custom filename or fallback ───
+function getBaseName(fallback) {
+  const custom = dlName.value.trim();
+  return custom || fallback;
+}
+
+// ─── Download: Combined ZIP ───
+// Single group: flat ZIP. Multiple groups: subfolders per group.
+async function downloadZip() {
+  if (!lastSliceResult) return;
+  const { groups, sliceW, sliceH } = lastSliceResult;
+
+  log('ZIP 생성 중...', 'info');
+  const zip = new JSZip();
+
+  if (groups.length === 1) {
+    for (const { name, data } of groups[0].blobs) zip.file(name, data);
+  } else {
+    for (const group of groups) {
+      const folder = zip.folder(group.name);
+      for (const { name, data } of group.blobs) folder.file(name, data);
+    }
+  }
+
+  const out = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{level:6} });
+
+  let fallback;
+  if (groups.length === 1) {
+    fallback = groups[0].name;
+  } else {
+    fallback = `batch_${groups.length}files`;
+  }
+
+  const baseName = getBaseName(fallback);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(out);
+  a.download = `${baseName}_${sliceW}x${sliceH}.zip`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  log(`✓ ZIP 다운로드 완료 → ${baseName}_${sliceW}x${sliceH}.zip`, 'success');
+}
+
+// ─── Download: Individual ZIPs packed in one outer ZIP (or files for single group) ───
+async function downloadFiles() {
+  if (!lastSliceResult) return;
+  const { groups, sliceW, sliceH } = lastSliceResult;
+  const custom = dlName.value.trim();
+
+  if (groups.length === 1 && groups[0].blobs.length <= 50) {
+    const blobs = groups[0].blobs;
+    log(`개별 파일 ${blobs.length}개 다운로드...`, 'info');
+    for (let i = 0; i < blobs.length; i++) {
+      const { name, data } = blobs[i];
+      const b = new Blob([data], { type:'image/jpeg' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      // custom name → "파일명_001.jpg", default → "001.jpg"
+      a.download = custom ? `${custom}_${name}` : name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      if (i < blobs.length-1) await new Promise(r => setTimeout(r, 150));
+    }
+    log(`✓ ${blobs.length}개 파일 다운로드 완료`, 'success');
+    return;
+  }
+
+  log(`개별 ZIP ${groups.length}개 생성 → 하나로 묶는 중...`, 'info');
+
+  const outerZip = new JSZip();
+
+  for (let g = 0; g < groups.length; g++) {
+    const group = groups[g];
+    const innerZip = new JSZip();
+    for (const { name, data } of group.blobs) innerZip.file(name, data);
+    const innerBlob = await innerZip.generateAsync({ type:'arraybuffer', compression:'DEFLATE', compressionOptions:{level:6} });
+
+    const zipName = `${group.name}_${sliceW}x${sliceH}.zip`;
+    outerZip.file(zipName, innerBlob);
+    log(`  ✓ ${zipName} (${(innerBlob.byteLength/1024/1024).toFixed(1)} MB)`, 'success');
+  }
+
+  const out = await outerZip.generateAsync({ type:'blob', compression:'STORE' });
+  const outerName = getBaseName(`개별ZIP_${groups.length}개`);
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(out);
+  a.download = `${outerName}_${sliceW}x${sliceH}.zip`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  log(`✓ 개별 ZIP ${groups.length}개 묶음 다운로드 완료`, 'success');
+}
+
+// ═══════════════════════════════════════════
+// 📢 규격 제보 유도
+// ═══════════════════════════════════════════
+function nudgeReport() {
+  const chat = document.querySelector('.chat');
+  const input = document.getElementById('chatMsg');
+  if (chat) chat.scrollIntoView({ behavior:'smooth', block:'center' });
+  if (input) {
+    setTimeout(() => {
+      input.focus();
+      input.placeholder = '이 플랫폼 규격을 알고 계신가요? 알려주세요!';
+      setTimeout(() => { input.placeholder = '한마디 남기기...'; }, 3000);
+    }, 500);
+  }
+}
+
+// ═══════════════════════════════════════════
+// ✂️ 가위질 한마디 — Speech Bubble Chat
+// ═══════════════════════════════════════════
+
+const CHAT_KEY = 'gawi-chat';
+const MAX_MSGS = 50;
+const MY_REACTS_KEY = 'gawi-my-reacts'; // track which msgs I reacted to
+
+let chatMsgs = []; // [{id, nick, text, ts, reacts}]
+let myReacts = new Set(); // set of msg ids
+
+const chatScroll = document.getElementById('chatScroll');
+const chatNick = document.getElementById('chatNick');
+const chatMsg = document.getElementById('chatMsg');
+const chatSend = document.getElementById('chatSend');
+
+// Restore saved nickname
+try { chatNick.value = localStorage.getItem('gawi-nick') || ''; } catch(e){}
+
+async function loadChat() {
+  try {
+    if (window.storage) {
+      const res = await window.storage.get(CHAT_KEY, true);
+      if (res && res.value) chatMsgs = JSON.parse(res.value);
+    }
+  } catch(e){}
+
+  // Load my reacts from localStorage
+  try {
+    const r = localStorage.getItem(MY_REACTS_KEY);
+    if (r) myReacts = new Set(JSON.parse(r));
+  } catch(e){}
+
+  // Seed with samples if empty
+  if (!chatMsgs.length) {
+    chatMsgs = [
+      {id:'s1', nick:'마감전사', text:'760x990 외우면 반은 성공이다', ts:Date.now()-172800000, reacts:3},
+      {id:'s2', nick:'야근요정', text:'검수 반려 메일은 왜 항상 퇴근 직전에 오는 걸까', ts:Date.now()-86400000, reacts:7},
+      {id:'s3', nick:'레이어장인', text:'_최종_진짜최종_리얼최종_v3.psd', ts:Date.now()-43200000, reacts:12},
+    ];
+  }
+  renderChat();
+}
+
+async function saveChat() {
+  try {
+    if (window.storage) {
+      await window.storage.set(CHAT_KEY, JSON.stringify(chatMsgs), true);
+    }
+  } catch(e){}
+}
+
+function saveMyReacts() {
+  try { localStorage.setItem(MY_REACTS_KEY, JSON.stringify([...myReacts])); } catch(e){}
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return '방금';
+  if (diff < 3600) return Math.floor(diff/60) + '분 전';
+  if (diff < 86400) return Math.floor(diff/3600) + '시간 전';
+  const days = Math.floor(diff/86400);
+  if (days < 30) return days + '일 전';
+  return Math.floor(days/30) + '달 전';
+}
+
+function renderChat() {
+  if (!chatScroll) return;
+  chatScroll.innerHTML = '';
+
+  if (!chatMsgs.length) {
+    chatScroll.innerHTML = '<div class="chat-empty">아직 아무도 안 적었어요. 첫 말풍선을 띄워보세요!</div>';
+    return;
+  }
+
+  chatMsgs.forEach((m, i) => {
+    const row = document.createElement('div');
+    const isRight = i % 2 === 1;
+    row.className = 'msg' + (isRight ? ' msg-right' : '');
+
+    const reacted = myReacts.has(m.id);
+    const reactCls = reacted ? ' reacted' : '';
+
+    row.innerHTML =
+      `<div class="msg-bubble">` +
+        `<div class="msg-nick">${escHtml(m.nick)}</div>` +
+        `<div class="msg-text">${escHtml(m.text)}</div>` +
+        `<div class="msg-bottom">` +
+          `<span class="msg-time">${timeAgo(m.ts)}</span>` +
+          `<button class="msg-react${reactCls}" data-id="${m.id}">` +
+            `✂️ <span class="r-count">${m.reacts || 0}</span>` +
+          `</button>` +
+        `</div>` +
+      `</div>`;
+
+    row.querySelector('.msg-react').addEventListener('click', () => toggleReact(m.id));
+    chatScroll.appendChild(row);
+  });
+
+  // Scroll to bottom
+  chatScroll.scrollTop = chatScroll.scrollHeight;
+}
+
+async function toggleReact(id) {
+  const msg = chatMsgs.find(m => m.id === id);
+  if (!msg) return;
+
+  if (myReacts.has(id)) {
+    myReacts.delete(id);
+    msg.reacts = Math.max(0, (msg.reacts||1) - 1);
+  } else {
+    myReacts.add(id);
+    msg.reacts = (msg.reacts||0) + 1;
+  }
+
+  saveMyReacts();
+  await saveChat();
+  renderChat();
+}
+
+// ─── Profanity Filter ───
+const BAD_WORDS = [
+  '시발','씨발','시bal','씨bal','ㅅㅂ','ㅆㅂ','시바','씨바',
+  '병신','ㅂㅅ','븅신','빙신',
+  '지랄','ㅈㄹ','지럴',
+  '개새끼','개세끼','개새기','ㄱㅅㄲ',
+  '미친놈','미친년','미놈','미년',
+  '좆','ㅈ같','존나','졸라','ㅈㄴ',
+  'fuck','shit','damn','bitch','asshole',
+  '꺼져','닥쳐','죽어',
+];
+
+function hasBadWord(text) {
+  const lower = text.toLowerCase().replace(/\s/g,'');
+  return BAD_WORDS.some(w => lower.includes(w));
+}
+
+// Post message
+chatSend.addEventListener('click', postMsg);
+chatMsg.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); postMsg(); }
+});
+
+async function postMsg() {
+  const nick = chatNick.value.trim() || '익명';
+  const text = chatMsg.value.trim();
+  if (!text) return;
+
+  if (hasBadWord(nick) || hasBadWord(text)) {
+    chatMsg.value = '';
+    chatMsg.placeholder = '욕설은 안 돼요 ✂️';
+    setTimeout(() => { chatMsg.placeholder = '한마디 남기기...'; }, 2000);
+    return;
+  }
+
+  // Save nickname
+  try { localStorage.setItem('gawi-nick', nick); } catch(e){}
+
+  const msg = {
+    id: 'm' + Date.now() + Math.random().toString(36).slice(2,6),
+    nick,
+    text,
+    ts: Date.now(),
+    reacts: 0,
+  };
+
+  chatMsgs.push(msg);
+  if (chatMsgs.length > MAX_MSGS) chatMsgs = chatMsgs.slice(-MAX_MSGS);
+
+  await saveChat();
+  renderChat();
+  chatMsg.value = '';
+}
+
+// Init
+loadChat();
+</script>
+</body>
+</html>
