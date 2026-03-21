@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>가위(GAWI) : 원고 슬라이서</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <style>
   @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css');
@@ -979,12 +981,25 @@ function nudgeReport() {
 // ✂️ 가위질 한마디 — Speech Bubble Chat
 // ═══════════════════════════════════════════
 
-const CHAT_KEY = 'gawi-chat';
-const MAX_MSGS = 50;
-const MY_REACTS_KEY = 'gawi-my-reacts'; // track which msgs I reacted to
+// ─── Firebase Init ───
+const firebaseConfig = {
+  apiKey: "AIzaSyBaD1lxdXbWRyDR0ZiPYE7PQmxoFM6Nd5I",
+  authDomain: "gawi-35fff.firebaseapp.com",
+  databaseURL: "https://gawi-35fff-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "gawi-35fff",
+  storageBucket: "gawi-35fff.firebasestorage.app",
+  messagingSenderId: "117668513398",
+  appId: "1:117668513398:web:44d5e3fbb34f949cb00157"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const msgsRef = db.ref('messages');
 
-let chatMsgs = []; // [{id, nick, text, ts, reacts}]
-let myReacts = new Set(); // set of msg ids
+const MAX_MSGS = 50;
+const MY_REACTS_KEY = 'gawi-my-reacts';
+
+let chatMsgs = [];
+let myReacts = new Set();
 
 const chatScroll = document.getElementById('chatScroll');
 const chatNick = document.getElementById('chatNick');
@@ -994,38 +1009,34 @@ const chatSend = document.getElementById('chatSend');
 // Restore saved nickname
 try { chatNick.value = localStorage.getItem('gawi-nick') || ''; } catch(e){}
 
-async function loadChat() {
-  try {
-    if (window.storage) {
-      const res = await window.storage.get(CHAT_KEY, true);
-      if (res && res.value) chatMsgs = JSON.parse(res.value);
-    }
-  } catch(e){}
+// Load my reacts from localStorage
+try {
+  const r = localStorage.getItem(MY_REACTS_KEY);
+  if (r) myReacts = new Set(JSON.parse(r));
+} catch(e){}
 
-  // Load my reacts from localStorage
-  try {
-    const r = localStorage.getItem(MY_REACTS_KEY);
-    if (r) myReacts = new Set(JSON.parse(r));
-  } catch(e){}
-
-  // Seed with samples if empty
-  if (!chatMsgs.length) {
-    chatMsgs = [
-      {id:'s1', nick:'마감전사', text:'760x990 외우면 반은 성공이다', ts:Date.now()-172800000, reacts:3},
-      {id:'s2', nick:'야근요정', text:'검수 반려 메일은 왜 항상 퇴근 직전에 오는 걸까', ts:Date.now()-86400000, reacts:7},
-      {id:'s3', nick:'레이어장인', text:'_최종_진짜최종_리얼최종_v3.psd', ts:Date.now()-43200000, reacts:12},
-    ];
+// ─── Firebase: Realtime listener ───
+msgsRef.orderByChild('ts').limitToLast(MAX_MSGS).on('value', snap => {
+  chatMsgs = [];
+  if (snap.exists()) {
+    snap.forEach(child => {
+      chatMsgs.push({ fbKey: child.key, ...child.val() });
+    });
   }
-  renderChat();
-}
 
-async function saveChat() {
-  try {
-    if (window.storage) {
-      await window.storage.set(CHAT_KEY, JSON.stringify(chatMsgs), true);
-    }
-  } catch(e){}
-}
+  // Seed with samples if DB is empty
+  if (!chatMsgs.length) {
+    const seeds = [
+      {id:'s1', nick:'마감전사', text:'760x990 외우면 반은 성공이다', ts:Date.now()-172800000, reacts:3, reports:0},
+      {id:'s2', nick:'야근요정', text:'검수 반려 메일은 왜 항상 퇴근 직전에 오는 걸까', ts:Date.now()-86400000, reacts:7, reports:0},
+      {id:'s3', nick:'레이어장인', text:'_최종_진짜최종_리얼최종_v3.psd', ts:Date.now()-43200000, reacts:12, reports:0},
+    ];
+    seeds.forEach(s => msgsRef.push(s));
+    return; // will re-trigger via listener
+  }
+
+  renderChat();
+});
 
 function saveMyReacts() {
   try { localStorage.setItem(MY_REACTS_KEY, JSON.stringify([...myReacts])); } catch(e){}
@@ -1130,39 +1141,38 @@ function renderChat() {
 }
 
 async function adminDelete(id) {
-  chatMsgs = chatMsgs.filter(m => m.id !== id);
-  await saveChat();
-  renderChat();
+  const msg = chatMsgs.find(m => m.id === id);
+  if (msg && msg.fbKey) {
+    msgsRef.child(msg.fbKey).remove();
+  }
 }
 
 async function reportMsg(id) {
   if (myReports.has(id)) return;
   const msg = chatMsgs.find(m => m.id === id);
-  if (!msg) return;
+  if (!msg || !msg.fbKey) return;
 
   myReports.add(id);
-  msg.reports = (msg.reports || 0) + 1;
-
+  const newCount = (msg.reports || 0) + 1;
+  msgsRef.child(msg.fbKey).update({ reports: newCount });
   saveMyReports();
-  await saveChat();
-  renderChat();
 }
 
 async function toggleReact(id) {
   const msg = chatMsgs.find(m => m.id === id);
-  if (!msg) return;
+  if (!msg || !msg.fbKey) return;
 
+  let newCount;
   if (myReacts.has(id)) {
     myReacts.delete(id);
-    msg.reacts = Math.max(0, (msg.reacts||1) - 1);
+    newCount = Math.max(0, (msg.reacts||1) - 1);
   } else {
     myReacts.add(id);
-    msg.reacts = (msg.reacts||0) + 1;
+    newCount = (msg.reacts||0) + 1;
   }
 
+  msgsRef.child(msg.fbKey).update({ reacts: newCount });
   saveMyReacts();
-  await saveChat();
-  renderChat();
 }
 
 // ─── Profanity Filter ───
@@ -1212,16 +1222,11 @@ async function postMsg() {
     reports: 0,
   };
 
-  chatMsgs.push(msg);
-  if (chatMsgs.length > MAX_MSGS) chatMsgs = chatMsgs.slice(-MAX_MSGS);
-
-  await saveChat();
-  renderChat();
+  msgsRef.push(msg);
   chatMsg.value = '';
 }
 
-// Init
-loadChat();
+// Firebase listener handles init — no loadChat() needed
 </script>
 </body>
 </html>
