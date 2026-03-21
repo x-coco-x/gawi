@@ -335,11 +335,10 @@
     border-bottom:1.5px solid var(--border);
     transform:rotate(-45deg);
   }
-  .msg.msg-right .msg-nick{color:#7c3aed}
   .msg.msg-right .msg-bottom{justify-content:flex-end}
 
   .msg-nick{
-    font-size:12px;font-weight:700;color:var(--green);
+    font-size:12px;font-weight:700;
     margin-bottom:2px;
   }
   .msg-text{
@@ -349,7 +348,7 @@
   }
 
   .msg-bottom{
-    display:flex;align-items:center;gap:10px;
+    display:flex;align-items:center;gap:8px;
     margin-top:5px;
   }
   .msg-time{
@@ -371,6 +370,14 @@
     background:var(--green-bg);
   }
   .msg-react .r-count{font-family:'IBM Plex Mono',monospace;font-size:11px}
+
+  .msg-report{
+    background:none;border:none;
+    font-size:11px;cursor:pointer;
+    color:var(--text-3);opacity:.4;
+    transition:all .15s;padding:2px 4px;border-radius:4px;
+  }
+  .msg-report:hover{opacity:1;color:var(--red);background:var(--red-bg)}
 
   .chat-empty{
     font-family:'Gaegu',cursive;font-size:15px;color:var(--text-3);
@@ -1030,6 +1037,34 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
+// ─── Nick → consistent color & side ───
+const NICK_COLORS = [
+  '#1a7f5a','#2563eb','#7c3aed','#c026d3',
+  '#d97706','#dc2626','#0891b2','#4f46e5',
+  '#059669','#e11d48','#7c2d12','#6d28d9',
+];
+
+function nickHash(nick) {
+  let h = 0;
+  for (let i = 0; i < nick.length; i++) h = ((h << 5) - h + nick.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function nickColor(nick) { return NICK_COLORS[nickHash(nick) % NICK_COLORS.length]; }
+function nickSide(nick) { return nickHash(nick) % 2 === 1; } // true = right
+
+// ─── Report tracking ───
+const MY_REPORTS_KEY = 'gawi-my-reports';
+let myReports = new Set();
+try {
+  const r = localStorage.getItem(MY_REPORTS_KEY);
+  if (r) myReports = new Set(JSON.parse(r));
+} catch(e){}
+
+function saveMyReports() {
+  try { localStorage.setItem(MY_REPORTS_KEY, JSON.stringify([...myReports])); } catch(e){}
+}
+
 function timeAgo(ts) {
   const diff = Math.floor((Date.now() - ts) / 1000);
   if (diff < 60) return '방금';
@@ -1044,37 +1079,73 @@ function renderChat() {
   if (!chatScroll) return;
   chatScroll.innerHTML = '';
 
-  if (!chatMsgs.length) {
+  // Filter out msgs with 7+ reports
+  const visible = chatMsgs.filter(m => (m.reports || 0) < 7);
+
+  if (!visible.length) {
     chatScroll.innerHTML = '<div class="chat-empty">아직 아무도 안 적었어요. 첫 말풍선을 띄워보세요!</div>';
     return;
   }
 
-  chatMsgs.forEach((m, i) => {
+  const isAdmin = location.search.includes('bokzinqoob');
+
+  visible.forEach(m => {
     const row = document.createElement('div');
-    const isRight = i % 2 === 1;
+    const isRight = nickSide(m.nick);
     row.className = 'msg' + (isRight ? ' msg-right' : '');
 
+    const color = nickColor(m.nick);
     const reacted = myReacts.has(m.id);
     const reactCls = reacted ? ' reacted' : '';
+    const reported = myReports.has(m.id);
+    const reportTxt = reported ? '신고됨' : '🚩';
+
+    let adminBtn = '';
+    if (isAdmin) {
+      adminBtn = `<button class="msg-report" data-action="delete" data-id="${m.id}" style="opacity:.7;color:var(--red)">🗑️</button>`;
+    }
 
     row.innerHTML =
       `<div class="msg-bubble">` +
-        `<div class="msg-nick">${escHtml(m.nick)}</div>` +
+        `<div class="msg-nick" style="color:${color}">${escHtml(m.nick)}</div>` +
         `<div class="msg-text">${escHtml(m.text)}</div>` +
         `<div class="msg-bottom">` +
           `<span class="msg-time">${timeAgo(m.ts)}</span>` +
           `<button class="msg-react${reactCls}" data-id="${m.id}">` +
             `✂️ <span class="r-count">${m.reacts || 0}</span>` +
           `</button>` +
+          `<button class="msg-report" data-id="${m.id}" ${reported?'disabled':''}>${reportTxt}</button>` +
+          adminBtn +
         `</div>` +
       `</div>`;
 
     row.querySelector('.msg-react').addEventListener('click', () => toggleReact(m.id));
+    row.querySelector('.msg-report').addEventListener('click', () => reportMsg(m.id));
+    const delBtn = row.querySelector('[data-action="delete"]');
+    if (delBtn) delBtn.addEventListener('click', () => adminDelete(m.id));
     chatScroll.appendChild(row);
   });
 
-  // Scroll to bottom
   chatScroll.scrollTop = chatScroll.scrollHeight;
+}
+
+async function adminDelete(id) {
+  chatMsgs = chatMsgs.filter(m => m.id !== id);
+  await saveChat();
+  renderChat();
+}
+
+async function reportMsg(id) {
+  if (myReports.has(id)) return;
+  const msg = chatMsgs.find(m => m.id === id);
+  if (!msg) return;
+
+  myReports.add(id);
+  msg.reports = (msg.reports || 0) + 1;
+
+  saveMyReports();
+  await saveChat();
+  renderChat();
 }
 
 async function toggleReact(id) {
@@ -1138,6 +1209,7 @@ async function postMsg() {
     text,
     ts: Date.now(),
     reacts: 0,
+    reports: 0,
   };
 
   chatMsgs.push(msg);
