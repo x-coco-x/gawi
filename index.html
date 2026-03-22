@@ -421,6 +421,42 @@
   }
   .chat-send:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.1)}
 
+  /* ── Quality Slider ── */
+  .quality-bar{
+    display:flex;align-items:center;gap:12px;
+    margin-bottom:28px;
+    padding:14px 18px;
+    background:var(--surface);border:1.5px solid var(--border);
+    border-radius:var(--r);
+  }
+  .quality-bar label{
+    font-size:12px;font-weight:700;color:var(--text-2);
+    flex-shrink:0;white-space:nowrap;
+  }
+  .quality-slider{
+    flex:1;-webkit-appearance:none;appearance:none;
+    height:4px;background:var(--surface-alt);border-radius:2px;
+    outline:none;cursor:pointer;
+  }
+  .quality-slider::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:16px;height:16px;border-radius:50%;
+    background:var(--text);border:2px solid var(--surface);
+    box-shadow:0 1px 4px rgba(0,0,0,.15);
+    cursor:pointer;transition:transform .1s;
+  }
+  .quality-slider::-webkit-slider-thumb:hover{transform:scale(1.15)}
+  .quality-slider::-moz-range-thumb{
+    width:16px;height:16px;border-radius:50%;
+    background:var(--text);border:2px solid var(--surface);
+    box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;
+  }
+  .quality-val{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;font-weight:600;color:var(--text);
+    min-width:36px;text-align:right;
+  }
+
   /* ── Anim ── */
   @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
   .anim{animation:rise .45s cubic-bezier(.22,.61,.36,1) forwards}
@@ -514,6 +550,13 @@
     </button>
   </div>
 
+  <!-- Quality Slider -->
+  <div class="quality-bar anim d2">
+    <label for="qualitySlider">JPEG 품질</label>
+    <input type="range" class="quality-slider" id="qualitySlider" min="90" max="100" value="100" step="1">
+    <span class="quality-val" id="qualityVal">100%</span>
+  </div>
+
   <!-- Progress -->
   <div class="progress-area" id="progressArea">
     <div class="bar-track"><div class="bar-fill" id="progressFill"></div></div>
@@ -584,6 +627,13 @@ const logArea=$('logArea'), logEntries=$('logEntries');
 const downloadArea=$('downloadArea');
 const dlZipLabel=$('dlZipLabel'), dlFilesLabel=$('dlFilesLabel');
 const dlName=$('dlName');
+const qualitySlider=$('qualitySlider'), qualityVal=$('qualityVal');
+
+// ─── Quality slider ───
+qualitySlider.addEventListener('input', () => {
+  qualityVal.textContent = qualitySlider.value + '%';
+});
+function getJpegQuality() { return parseInt(qualitySlider.value) / 100; }
 
 // ─── Upload ───
 uploadZone.addEventListener('click', e => {
@@ -756,7 +806,7 @@ async function sliceImages(images, sliceW, sliceH, onProgress) {
       const c = document.createElement('canvas');
       c.width = sliceW; c.height = dstH;
       c.getContext('2d').drawImage(img, 0, srcY, img.width, srcH, 0, 0, sliceW, dstH);
-      const tmpBlob = await canvasToBlob(c, 'image/jpeg', 1.0);
+      const tmpBlob = await canvasToBlob(c, 'image/jpeg', getJpegQuality());
       const arrBuf = await tmpBlob.arrayBuffer();
       sliceBlobs.push({ name: String(idx+1).padStart(3,'0')+'.jpg', data: arrBuf });
       idx++;
@@ -806,7 +856,7 @@ async function runSlice(sliceW, sliceH, type) {
   setProgress(0, '준비 중...');
 
   try {
-    log(`슬라이스 규격: ${sliceW} × ${sliceH} px`, 'info');
+    log(`슬라이스 규격: ${sliceW} × ${sliceH} px / 품질: ${qualitySlider.value}%`, 'info');
 
     const sourceGroups = buildSourceGroups();
     const totalGroups = sourceGroups.length;
