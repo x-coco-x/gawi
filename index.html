@@ -756,7 +756,7 @@ async function sliceImages(images, sliceW, sliceH, onProgress) {
       const c = document.createElement('canvas');
       c.width = sliceW; c.height = dstH;
       c.getContext('2d').drawImage(img, 0, srcY, img.width, srcH, 0, 0, sliceW, dstH);
-      const tmpBlob = await canvasToBlob(c, 'image/jpeg', 0.92);
+      const tmpBlob = await canvasToBlob(c, 'image/jpeg', 1.0);
       const arrBuf = await tmpBlob.arrayBuffer();
       sliceBlobs.push({ name: String(idx+1).padStart(3,'0')+'.jpg', data: arrBuf });
       idx++;
